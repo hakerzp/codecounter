@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>jstree basic demos</title>
+	<style>
+	html { margin:0; padding:0; font-size:62.5%; }
+	body { max-width:800px; min-width:300px; margin:0 auto; padding:20px 10px; font-size:14px; font-size:1.4em; }
+	h1 { font-size:1.8em; }
+	.demo { overflow:auto; border:1px solid silver; min-height:100px; }
+  li
+  {
+    display:inline-block;
+  }
+
+  
+	</style>
+	<link rel="stylesheet" href="javascripts/jstree/themes/default/style.min.css" />
+
+  <script src="javascripts/jquery.min.js"></script>
+  <script src="javascripts/jquery.tmpl.min.js"></script>
+	<script src="javascripts/jstree/jstree.js"></script>
+	
+</head>
+<body>
+  <div id="container" style="width:auto">
+ 
+    <div style="background-color:#FFA5;">
+    <h1 id="rootdir" style="margin-bottom:0;">代码统计</h1></div>
+    <div id="menu" style="height:auto;width:20%;float:left;">
+  </div>
+     
+    <div id="content" style="height:auto;width:80%;float:left;">
+    
+        <h1 id="title" configid=''></h1>
+        <div class="col-md-2 col-sm-4 col-xs-4" style="text-align:right;">
+          <table>
+            <tr>
+              <th><div id="nodetofilter">#</div></th>
+              <th><div>:</div></th>
+              <th><input id="search" type="text" value="" style="box-shadow:inset 0 0 4px #eee; width:120px; margin:0; padding:6px 12px; border-radius:4px; border:1px solid silver; font-size:1.1em;" placeholder="Search" /></th>
+              <th><input id="toggle_check_matched" type="button" value="toggle matched"/></th>
+              <th><input id="save_config" type="button" value="保存"/></th>
+              <th><input id="saveas_config" type="button" value="另存为"/></th>
+              <th><input id="delete_config" type="button" value="删除"/></th>
+            </tr>
+          </table>
+        </div>
+        <div id="lazy" class="demo"></div>
+        <ul>
+          <li>总代码行:</li>
+          <li id="allcode">0</li>
+        </ul>	
+    </div>
+     
+    <div id="footer" style="background-color:#FFA500;clear:both;text-align:center;"> 
+    </div>
+
+  <script id="tmpl_sub_menu" type="text/x-jquery-tmpl">
+    <a href='#' onclick='viewConfigDetail("${id}")''>${title}</a><b><br>
+  </script>
+
+	<script>
+  
+  //search finish event
+  var matchedRes = [];
+  var instance = null;
+	function viewConfigDetail(configid)
+  {
+    matchedRes = [];
+    $.getJSON(  
+      `loadconfig.do?id=${configid}`,  
+      function (result) {
+        
+        $('#title').html(result.title);
+        $('#title').attr('configid',result.id);
+        // 重新设置树的JSON数据集
+        if(null != instance)
+        {
+          
+          instance.uncheck_node(instance.get_checked());
+          if('inittree' != result.id)
+          {
+            instance.check_node(result.config);
+          }
+        }
+        else
+        {
+          $('#lazy').jstree({
+              'core' : {
+                  'data' : result.config
+              },
+              "checkbox" : {
+                  "tie_selection": false,
+                  "whole_node": false
+              },
+              "plugins" : ['checkbox' ,
+                          "contextmenu", "dnd", "search"
+                          //"state", 
+                        ],
+              "contextmenu" :{
+                  "items":{
+                      "create":null,
+                      "rename":null,
+                      "remove":null,
+                      "ccp":null,
+                      "cloc":{
+                          "label":"代码统计",
+                          "action":function(data){
+                              var inst = jQuery.jstree.reference(data.reference),
+                              obj = inst.get_node(data.reference);
+                              
+                          }
+                      },
+                      "search":{
+                          "label":"过滤文件",
+                          "action":function(data){
+                              var inst = jQuery.jstree.reference(data.reference),
+                              obj = inst.get_node(data.reference);
+                              $("#nodetofilter").text(obj.id);
+                          }
+                      },
+                      "open_all":{
+                          "label":"全部展开",
+                          "action":function(data){
+                              var inst = jQuery.jstree.reference(data.reference),
+                              obj = inst.get_node(data.reference);
+                              inst.open_all(obj.id);
+                          }
+                      },
+                      "close_all":{
+                          "label":"全部关闭",
+                          "action":function(data){
+                              var inst = jQuery.jstree.reference(data.reference),
+                              obj = inst.get_node(data.reference);
+                              inst.close_all(obj.id);
+                          }
+                      },
+                    }
+                  },
+          });
+          //$('#lazy').jstree(true).refresh(); // 刷新树
+          instance =  $('#lazy').jstree(true);
+
+
+          //checkbox 选中事件
+          $('#lazy').on("check_node.jstree", function (node, data, event) {
+            var instance = $('#lazy').jstree(true);
+            calcAllCode(instance);
+          });
+
+          //点击事件
+          $('#lazy').bind("activate_node.jstree", function (obj, e) {                
+              var node = e.node;
+              $("#nodetofilter").text(node.id);
+          });
+
+          //checkbox 取消选中事件
+          $('#lazy').on("uncheck_node.jstree", function (node, data, event) {
+            var instance = $('#lazy').jstree(true);
+            calcAllCode(instance);
+          });
+
+          $('#lazy').bind("search.jstree", function (e , data) {   
+            matchedRes = data.res;
+          });
+
+
+        }
+
+      }  
+   );
+  }
+  
+  function isParentChecked(instance , node)
+  {
+    if('#' == node.parent)
+    {
+      return false;
+    }
+    var parentNode = instance.get_node(node.parent);
+    if(parentNode.state.checked) 
+    {
+      return true;
+    }
+    else
+    {
+      return isParentChecked(instance , instance.get_node(parentNode));
+    }
+  }
+  function calcAllCode(instance)
+  {
+      
+      var nodes = instance.get_checked(true);//获取 所有选中的节点 参数：true（返回对象） false/null（返回ids）
+      var allcode = 0;
+      nodes.forEach(node => {
+        if(!isParentChecked(instance , node))
+        {
+          allcode += node.a_attr.code;
+        }
+        
+      });
+      
+      $('#allcode').text(allcode);
+      
+  }
+  function configListRefresh(){
+    $('#menu').empty();
+    $.getJSON(  
+      "loadconfig.do",  
+      function (data) {
+        data.forEach(item=>{
+          $('#tmpl_sub_menu').tmpl(item).appendTo('#menu');
+        });
+        
+      }  
+    );
+  }
+  
+
+  $.getJSON(  
+      "getrootdir.do",  
+      function (data) {
+        $('#rootdir').html(data.root);
+      }  
+  );
+
+  function saveConfig(bSaveAs)
+  {
+    var saveData = [];  
+    var checkednodes = instance.get_checked(true);//获取 所有选中的节点 参数：true（返回对象） false/null（返回ids）
+    var allcode = 0;
+    checkednodes.forEach(node => {
+      if(!isParentChecked(instance , node))
+      {
+        saveData.push({id:node.id});
+      }
+      
+    });
+
+    var configid = $('#title').attr('configid');
+    var title = $('#title').html();
+    var data = {id:configid,title:title,config:saveData};
+    if('inittree' == configid || bSaveAs)
+    {
+      data.id = 'inittree';
+      var name = prompt("配置名称：");
+      if(name!=null && name!="")
+      {
+        data.title = name;
+      }
+      else
+      {
+        return;
+      }
+    }
+    $.ajax({
+          type : "POST",
+          url : "saveconfig.do",
+          data : JSON.stringify(data),
+          contentType : "application/json",
+          dataType : "json",
+          success:function(data, textStatus){
+            //data可能是xmlDoc、jsonObj、html、text等等
+            configListRefresh();
+            viewConfigDetail(data.id);
+          },
+          complete:function(msg) {
+            
+          }
+
+    });
+  }
+
+  var to = false;
+  $('#search').keyup(function () {
+    if(to) { clearTimeout(to); }
+    to = setTimeout(function () {
+      var v = $('#search').val();
+      var id = $('#nodetofilter').text();
+      console.log(`filter ${id}`);
+      $('#lazy').jstree(true).search(v, false, false, id);
+    }, 250);
+  });
+
+  
+
+  var toSelect = true;
+  $("#toggle_check_matched").click( function() { 
+    if(toSelect)
+    {
+      $('#lazy').jstree(true).check_node(matchedRes);
+    }
+    else
+    {
+      $('#lazy').jstree(true).uncheck_node(matchedRes);
+    }
+    toSelect = !toSelect;
+
+    
+  });
+
+  $("#save_config").click( function() { 
+    
+    saveConfig(false);
+    
+  });
+
+  $("#delete_config").click( function() { 
+    var configid = $('#title').attr('configid');
+    $.getJSON(  
+      `deleteconfig.do?id=${configid}`,  
+      function (data) {
+        configListRefresh();
+        viewConfigDetail('inittree');
+      }  
+    );
+    
+  });
+
+  $("#saveas_config").click( function() { 
+    saveConfig(true);
+    
+  });
+
+  configListRefresh();
+  viewConfigDetail('inittree');
+	</script>
+</body>
+</html>
